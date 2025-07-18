@@ -1,0 +1,2410 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>医学图像分割可视化系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script> -->
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                        secondary: '#36CFC9',
+                        accent: '#722ED1',
+                        success: '#52C41A',
+                        warning: '#FAAD14',
+                        danger: '#FF4D4F',
+                        dark: '#1F2329',
+                        'dark-light': '#4E5969',
+                        'light-gray': '#F2F3F5',
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .scrollbar-hide {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+            .scrollbar-hide::-webkit-scrollbar {
+                display: none;
+            }
+            .card-shadow {
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            }
+            .image-container {
+                aspect-ratio: 1/1;
+                background-color: #f5f5f5;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .hover-scale {
+                transition: transform 0.3s ease;
+            }
+            .hover-scale:hover {
+                transform: scale(1.02);
+            }
+            .file-item.selected {
+                background-color: rgba(22, 93, 255, 0.1);
+                border: 1px solid #165DFF;
+            }
+            .mask-layer {
+                background-repeat: no-repeat;
+                background-position: center;
+                pointer-events: none;
+                background-size: 100% 100%;
+                mix-blend-mode: multiply;
+            }
+            .result-image-container {
+                position: relative;
+                width: 100%;
+                height: 100%;
+            }
+            .compare-metric {
+                font-weight: 600;
+                color: var(--primary);
+            }
+            .compare-difference {
+                font-weight: 600;
+                color: var(--danger);
+            }
+        }
+    </style>
+</head>
+<body class="font-inter bg-gray-50 text-dark min-h-screen flex flex-col">
+    <!-- 顶部导航栏 -->
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <i class="fa fa-heartbeat text-primary text-2xl"></i>
+                <h1 class="text-xl font-semibold text-dark">肝脏肿瘤分割系统</h1>
+            </div>
+            <div class="flex items-center space-x-4">
+                <button class="text-dark-light hover:text-primary transition-colors">
+                    <i class="fa fa-question-circle"></i>
+                    <span class="hidden md:inline ml-1">帮助</span>
+                </button>
+                <button class="text-dark-light hover:text-primary transition-colors">
+                    <i class="fa fa-cog"></i>
+                    <span class="hidden md:inline ml-1">设置</span>
+                </button>
+                <div class="relative">
+                    <button class="flex items-center space-x-1 text-dark-light hover:text-primary transition-colors">
+                        <i class="fa fa-user-circle"></i>
+                        <span class="hidden md:inline">用户</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="flex-grow container mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- 左侧面板 - 数据和模型控制 -->
+        <div class="lg:col-span-1 space-y-6">
+            <!-- 数据输入卡片 -->
+            <div class="bg-white rounded-xl card-shadow p-5 hover-scale">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold flex items-center">
+                        <i class="fa fa-folder-open text-primary mr-2"></i>
+                        数据输入
+                    </h2>
+                    <div class="flex space-x-2">
+                        <button id="mode2D" class="px-3 py-1 text-xs rounded-lg bg-primary text-white">
+                            2D模式
+                        </button>
+                        <button id="mode2_5D" class="px-3 py-1 text-xs rounded-lg border border-gray-300">
+                            2.5D模式
+                        </button>
+                        <button class="text-primary hover:text-primary/80 transition-colors">
+                            <i class="fa fa-ellipsis-v"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary transition-colors cursor-pointer" id="fileDropArea">
+                    <i class="fa fa-cloud-upload text-4xl text-gray-400 mb-3"></i>
+                    <p class="text-gray-500 mb-1" id="uploadHint">拖放图片文件到此处</p>
+                    <p class="text-sm text-gray-400 mb-3">支持的格式: PNG, JPG, BMP, DCM</p>
+                    <button class="mt-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors" id="browseButton">
+                        <i class="fa fa-folder-open mr-1"></i> 浏览文件
+                    </button>
+                    <input type="file" id="fileInput2D" class="hidden" accept=".png,.jpg,.jpeg,.bmp,.dcm" multiple>
+                    <input type="file" id="fileInput2_5D" class="hidden" accept=".png,.jpg,.jpeg,.bmp,.dcm" multiple webkitdirectory directory>
+                </div>
+                
+                <div class="mt-4">
+                    <h3 class="font-medium text-sm text-dark-light mb-2">已加载数据</h3>
+                    <div class="space-y-2 max-h-40 overflow-y-auto scrollbar-hide" id="loadedFiles">
+                        <!-- 文件列表将动态添加到这里 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 模型设置卡片 -->
+            <div class="bg-white rounded-xl card-shadow p-5 hover-scale">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold flex items-center">
+                        <i class="fa fa-cogs text-primary mr-2"></i>
+                        模型设置
+                    </h2>
+                    <button class="text-primary hover:text-primary/80 transition-colors">
+                        <i class="fa fa-ellipsis-v"></i>
+                    </button>
+                </div>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-dark-light mb-1">模型选择</label>
+                        <select class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors" id="modelSelect">
+                            <option>U-Net (2D)</option>
+                            <option>SAM(2D)</option>
+                            <option>Attention-UNet(2D)</option>
+                            <option>U-Net (2D->2.5D)</option>
+                            <option>U-Net (3D->2.5D)</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-dark-light mb-1">参数设置</label>
+                        <div class="space-y-3 bg-light-gray p-3 rounded-lg">
+                            <div>
+                                <div class="flex justify-between text-xs mb-1">
+                                    <span>Batch Size</span>
+                                    <span id="batchSizeValue">8</span>
+                                </div>
+                                <input type="range" min="1" max="32" value="8" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" id="batchSizeSlider">
+                            </div>
+                            
+                            <div>
+                                <div class="flex justify-between text-xs mb-1">
+                                    <span>Epochs</span>
+                                    <span id="epochsValue">50</span>
+                                </div>
+                                <input type="range" min="1" max="100" value="50" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" id="epochsSlider">
+                            </div>
+                            
+                            <div>
+                                <div class="flex justify-between text-xs mb-1">
+                                    <span>学习率</span>
+                                    <span id="lrValue">0.001</span>
+                                </div>
+                                <input type="range" min="0.0001" max="0.01" step="0.0001" value="0.001" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" id="lrSlider">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button id="runSegmentation" class="w-full py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center space-x-2">
+                        <i class="fa fa-play"></i>
+                        <span>运行分割</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 模型性能卡片 -->
+            <div class="bg-white rounded-xl card-shadow p-5 hover-scale">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold flex items-center">
+                        <i class="fa fa-bar-chart text-primary mr-2"></i>
+                        模型基准性能
+                    </h2>
+                    <button id="refreshPerformanceChart" class="text-primary hover:text-primary/80 transition-colors">
+                        <i class="fa fa-refresh"></i>
+                    </button>
+                </div>
+                
+                <div class="space-y-3">
+                    <div class="grid grid-cols-2 gap-3">
+                        <!-- 其他指标 -->
+                        <div class="bg-light-gray p-3 rounded-lg">
+                            <p class="text-xs text-gray-500 mb-1">像素准确率(%)</p>
+                            <p class="text-xl font-semibold text-success" id="pixelAccuracyValue">99.49</p>
+                        </div>
+
+                        <!-- 肝脏指标 -->
+                        <div class="bg-light-gray p-3 rounded-lg">
+                            <p class="text-xs text-gray-500 mb-1">Dice(肝脏)(%)</p>
+                            <p class="text-xl font-semibold text-accent" id="diceLiverValue">89.76</p>
+                        </div>
+                        <div class="bg-light-gray p-3 rounded-lg">
+                            <p class="text-xs text-gray-500 mb-1">IoU(肝脏)(%)</p>
+                            <p class="text-xl font-semibold text-warning" id="iouLiverValue">87.50</p>
+                        </div>
+                        
+                        <!-- 肝脏+肿瘤指标 -->
+                        <div class="bg-light-gray p-3 rounded-lg">
+                            <p class="text-xs text-gray-500 mb-1">Dice(肝+瘤)(%)</p>
+                            <p class="text-xl font-semibold text-primary" id="diceLiverTumorValue">91.67</p>
+                        </div>
+                        <div class="bg-light-gray p-3 rounded-lg">
+                            <p class="text-xs text-gray-500 mb-1">IoU(肝+瘤)(%)</p>
+                            <p class="text-xl font-semibold text-secondary" id="iouLiverTumorValue">90.79</p>
+                        </div>
+                        
+                        
+                    </div>
+                    
+                    <p class="text-sm font-medium text-gray-500 mb-3">分割准确性指标趋势</p>
+                    <!-- <div class="h-48 mt-1">
+                        <canvas id="segmentationAccuracyChart"></canvas>
+                    </div> -->
+                    <div class="h-48 mt-1 flex items-center justify-center" id="accuracyImageContainer">
+                        <!-- UNet的metrics图片（默认显示） -->
+                        <img src="images\unet_metrics_curve.png" 
+                            alt="UNet 准确性指标" 
+                            class="max-w-full max-h-full object-contain" 
+                            id="unetMetricsImg">
+                        <!-- Attention-UNet的metrics图片（默认隐藏） -->
+                        <img src="images\attention_metrics_curve.png" 
+                            alt="Attention-UNet 准确性指标" 
+                            class="max-w-full max-h-full object-contain hidden" 
+                            id="attentionMetricsImg">
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <!-- 肝脏边界指标 -->
+                        <div class="bg-light-gray p-3 rounded-lg">
+                            <p class="text-xs text-gray-500 mb-1">RVD(肝脏)(%)</p>
+                            <p class="text-xl font-semibold text-danger" id="rvdLiverValue">6.00</p>
+                        </div>
+                        <div class="bg-light-gray p-3 rounded-lg">
+                            <p class="text-xs text-gray-500 mb-1">ASD(肝脏)(像素)</p>
+                            <p class="text-xl font-semibold text-warning" id="asdLiverValue">4.80</p>
+                        </div>
+                        
+                        <!-- 肝脏+肿瘤边界指标 -->
+                        <div class="bg-light-gray p-3 rounded-lg">
+                            <p class="text-xs text-gray-500 mb-1">RVD(肝+瘤)(%)</p>
+                            <p class="text-xl font-semibold text-primary" id="rvdLiverTumorValue">-35.34</p>
+                        </div>
+                        <div class="bg-light-gray p-3 rounded-lg">
+                            <p class="text-xs text-gray-500 mb-1">ASD(肝+瘤)(像素)</p>
+                            <p class="text-xl font-semibold text-secondary" id="asdLiverTumorValue">6.03</p>
+                        </div>
+                        
+                        <!-- 其他边界指标 -->
+                        <div class="bg-light-gray p-3 rounded-lg">
+                            <p class="text-xs text-gray-500 mb-1">MSD(mm)</p>
+                            <p class="text-xl font-semibold text-danger" id="msdValue">-</p>
+                        </div>
+                        <div class="bg-light-gray p-3 rounded-lg">
+                            <p class="text-xs text-gray-500 mb-1">RMSD(mm)</p>
+                            <p class="text-xl font-semibold text-success" id="rmsdValue">-</p>
+                        </div>
+                        <div class="bg-light-gray p-3 rounded-lg">
+                            <p class="text-xs text-gray-500 mb-1">VOE(%)</p>
+                            <p class="text-xl font-semibold text-accent" id="voeValue">-</p>
+                        </div>
+                    </div>
+
+                    <p class="text-sm font-medium text-gray-500 mb-3">损失曲线</p>
+                    <!-- <div class="h-48 mt-1">
+                        <canvas id="performanceChart"></canvas>
+                    </div> -->
+                    <!-- 损失曲线图片容器 -->
+                    <div class="h-48 mt-1 flex items-center justify-center" id="lossImageContainer">
+                        <!-- UNet的loss图片（默认显示） -->
+                        <img src="images\unet_loss_curve.png" 
+                            alt="UNet 损失曲线" 
+                            class="max-w-full max-h-full object-contain" 
+                            id="unetLossImg">
+                        <!-- Attention-UNet的loss图片（默认隐藏） -->
+                        <img src="images\attention_loss_curve.png" 
+                            alt="Attention-UNet 损失曲线" 
+                            class="max-w-full max-h-full object-contain hidden" 
+                            id="attentionLossImg">
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 右侧面板 - 结果展示 -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- 原始图像展示 -->
+            <div class="bg-white rounded-xl card-shadow p-5 hover-scale">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold flex items-center">
+                        <i class="fa fa-image text-primary mr-2"></i>
+                        原始图像
+                    </h2>
+                    <div class="flex space-x-2">
+                        <button id="clearCurrent" class="text-primary hover:text-primary/80 transition-colors">
+                            <i class="fa fa-trash"></i>
+                        </button>
+                        <button class="text-primary hover:text-primary/80 transition-colors">
+                            <i class="fa fa-ellipsis-v"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="originalImages">
+                    <!-- 原始图像将动态添加到这里 -->
+                    <div class="col-span-3 flex items-center justify-center py-10 text-gray-400" id="noImagesMessage">
+                        <i class="fa fa-image text-4xl mr-3"></i>
+                        <span>请从左侧"已加载数据"中选择图像文件</span>
+                    </div>
+                </div>
+                
+                <div class="mt-4 flex justify-between items-center">
+                    <p class="text-sm text-gray-500" id="imageCountText">未选择图像</p>
+                    <div class="flex space-x-1" id="pagination">
+                        <!-- 分页按钮将动态添加到这里 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 分割结果展示 -->
+            <div class="bg-white rounded-xl card-shadow p-5 hover-scale">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold flex items-center">
+                        <i class="fa fa-object-group text-primary mr-2"></i>
+                        分割结果
+                    </h2>
+                    <div class="flex space-x-2">
+                        <button class="text-primary hover:text-primary/80 transition-colors">
+                            <i class="fa fa-expand"></i>
+                        </button>
+                        <button class="text-primary hover:text-primary/80 transition-colors">
+                            <i class="fa fa-ellipsis-v"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 gap-6">
+                    <div class="max-w-md mx-auto">
+                        <div class="flex justify-between items-center mb-2">
+                            <span id="segmentationStatus" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium" style="display: none;">
+                                <i class="fa fa-check-circle mr-1"></i> 完成
+                            </span>
+                        </div>
+                        <div class="image-container rounded-lg overflow-hidden relative flex items-center justify-center bg-gray-100 mb-6" id="resultContainer">
+                            <!-- 原始图像将显示在这里 -->
+                            <div class="text-center p-6 text-gray-400" id="noResultMessage">
+                                <i class="fa fa-image text-4xl mb-3"></i>
+                                <p>请先选择图像文件并点击"运行分割"按钮</p>
+                            </div>
+                            
+                            <!-- 图像和遮罩容器 -->
+                            <div class="result-image-container" id="resultImageContainer">
+                                <!-- 原始图像将通过JS动态添加到这里，不应用透明度 -->
+                            </div>
+
+                            <!-- 肿瘤遮罩层 -->
+                            <div class="absolute inset-0 mask-layer" 
+                                id="tumorMask" 
+                                style="display: none;"></div>
+                                
+                            <!-- 肝脏遮罩层 -->
+                            <div class="absolute inset-0 mask-layer" 
+                                id="liverMask" 
+                                style="display: none;"></div>
+                        </div>
+                        
+                        <!-- 分割控制组件 -->
+                        <div class="mt-6 space-y-3" style="max-width: 300px; margin: 0 auto; display: none;" id="segmentationControls">
+                            <div>
+                                <label class="block text-md font-medium text-gray-500 mb-3">分割透明度: <span id="opacityValue" class="text-md">70</span>%</label>
+                                <input type="range" min="0" max="100" value="70" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary" id="opacitySlider">
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="flex items-center">
+                                    <input type="checkbox" id="showLiver" class="w-4 h-4 mr-3 rounded text-primary focus:ring-primary" checked>
+                                    <label for="showLiver" class="flex items-center text-sm">
+                                        <div class="w-4 h-4 rounded-full bg-green-500 mr-2"></div>
+                                        <span>肝脏</span>
+                                    </label>
+                                </div>
+                                <div class="flex items-center">
+                                    <input type="checkbox" id="showTumor" class="w-4 h-4 mr-3 rounded text-primary focus:ring-primary" checked>
+                                    <label for="showTumor" class="flex items-center text-sm">
+                                        <div class="w-4 h-4 rounded-full bg-red-500 mr-2"></div>
+                                        <span>肿瘤</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 方法对比卡片 -->
+            <div class="bg-white rounded-xl card-shadow p-5 hover-scale">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold flex items-center">
+                        <i class="fa fa-bar-chart text-primary mr-2"></i>
+                        方法对比
+                    </h2>
+                    <div class="flex space-x-2">
+                        <!-- 对比模式选择 -->
+                        <select id="compareMode" class="text-sm border border-gray-300 rounded-lg px-2 py-1 focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors">
+                            <option value="same">同模型参数对比</option>
+                            <option value="cross">跨模型对比</option>
+                        </select>
+
+                        <!-- 当前对比图片显示 -->
+                        <div id="currentCompareFile" class="text-sm text-dark-light ml-4">
+                            对比文件：<span id="compareFileName">未选择</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 对比内容区 -->
+                <div id="compareContent">
+                    <!-- 参数对比默认区域 -->
+                    <div id="sameModelCompare" class="space-y-4">
+                        <!-- 新增模型选择勾选框 -->
+                        <div class="flex flex-wrap gap-3 mb-4">
+                            <div class="flex items-center">
+                                <input type="radio" name="modelCompare" id="compareModel1" value="U-Net (2D)" class="w-4 h-4 text-primary focus:ring-primary" checked>
+                                <label for="compareModel1" class="ml-2 text-sm">U-Net (2D)</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="radio" name="modelCompare" id="compareModel2" value="SAM(2D)" class="w-4 h-4 text-primary focus:ring-primary">
+                                <label for="compareModel2" class="ml-2 text-sm">SAM(2D)</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="radio" name="modelCompare" id="compareModel3" value="Attention-UNet(2D)" class="w-4 h-4 text-primary focus:ring-primary">
+                                <label for="compareModel3" class="ml-2 text-sm">Attention-UNet(2D)</label>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <!-- 参数组A -->
+                            <div class="group">
+                                <div class="image-container rounded-lg overflow-hidden relative bg-gray-100">
+                                    <div id="paramAImage" class="w-full h-full flex items-center justify-center">
+                                        <div class="text-center text-gray-400">
+                                            <i class="fa fa-image text-4xl mb-2"></i>
+                                            <p class="text-sm">暂无分割结果</p>
+                                        </div>
+                                    </div>
+                                    <div class="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-medium">
+                                        参数组A (无结果)
+                                    </div>
+                                </div>
+                                <div class="mt-2 p-2 bg-light-gray rounded-lg">
+                                    <div class="text-sm space-y-1">
+                                        <div class="flex">
+                                            <span>肿瘤面积: </span>
+                                            <span class="tumor-area font-medium">0</span> px²
+                                        </div>
+                                        <div class="flex">
+                                            <span>肿瘤周长: </span>
+                                            <span class="tumor-perimeter font-medium">0</span> px
+                                        </div>
+                                        <div class="flex">
+                                            <span>分割耗时: </span>
+                                            <span class="time-elapsed font-medium">0</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 参数组B -->
+                            <div class="group">
+                                <div class="image-container rounded-lg overflow-hidden relative bg-gray-100">
+                                    <div id="paramBImage" class="w-full h-full flex items-center justify-center">
+                                        <div class="text-center text-gray-400">
+                                            <i class="fa fa-image text-4xl mb-2"></i>
+                                            <p class="text-sm">暂无分割结果</p>
+                                        </div>
+                                    </div>
+                                    <div class="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-medium">
+                                        参数组B (无结果)
+                                    </div>
+                                </div>
+                                <div class="mt-2 p-2 bg-light-gray rounded-lg">
+                                    <div class="text-sm space-y-1">
+                                        <div class="flex">
+                                            <span>肿瘤面积: </span>
+                                            <span class="tumor-area font-medium">0</span> px²
+                                        </div>
+                                        <div class="flex">
+                                            <span>肿瘤周长: </span>
+                                            <span class="tumor-perimeter font-medium">0</span> px
+                                        </div>
+                                        <div class="flex">
+                                            <span>分割耗时: </span>
+                                            <span class="time-elapsed font-medium">0</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 参数组C -->
+                            <div class="group">
+                                <div class="image-container rounded-lg overflow-hidden relative bg-gray-100">
+                                    <div id="paramCImage" class="w-full h-full flex items-center justify-center">
+                                        <div class="text-center text-gray-400">
+                                            <i class="fa fa-image text-4xl mb-2"></i>
+                                            <p class="text-sm">暂无分割结果</p>
+                                        </div>
+                                    </div>
+                                    <div class="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-medium">
+                                        参数组C (无结果)
+                                    </div>
+                                </div>
+                                <div class="mt-2 p-2 bg-light-gray rounded-lg">
+                                    <div class="text-sm space-y-1">
+                                        <div class="flex">
+                                            <span>肿瘤面积: </span>
+                                            <span class="tumor-area font-medium">0</span> px²
+                                        </div>
+                                        <div class="flex">
+                                            <span>肿瘤周长: </span>
+                                            <span class="tumor-perimeter font-medium">0</span> px
+                                        </div>
+                                        <div class="flex">
+                                            <span>分割耗时: </span>
+                                            <span class="time-elapsed font-medium">0</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- <div class="h-64">
+                            <canvas id="paramCompareChart"></canvas>
+                        </div> -->
+                    </div>
+
+                    <!-- 跨模型对比区域 -->
+                    <div id="crossModelCompare" class="space-y-4 hidden">
+                        <!-- 新增模型选择多选框 -->
+                        <div class="flex flex-wrap gap-3 mb-4">
+                            <div class="flex items-center">
+                                <input type="checkbox" id="crossModel1" value="U-Net (2D)" class="w-4 h-4 text-primary focus:ring-primary" checked>
+                                <label for="crossModel1" class="ml-2 text-sm">U-Net (2D)</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="checkbox" id="crossModel2" value="SAM(2D)" class="w-4 h-4 text-primary focus:ring-primary" checked>
+                                <label for="crossModel2" class="ml-2 text-sm">SAM(2D)</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="checkbox" id="crossModel3" value="Attention-UNet(2D)" class="w-4 h-4 text-primary focus:ring-primary">
+                                <label for="crossModel3" class="ml-2 text-sm">Attention-UNet(2D)</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="checkbox" id="crossModel4" value="U-Net (2D->2.5D)" class="w-4 h-4 text-primary focus:ring-primary">
+                                <label for="crossModel4" class="ml-2 text-sm">U-Net (2D->2.5D)</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="checkbox" id="crossModel5" value="U-Net (3D->2.5D)" class="w-4 h-4 text-primary focus:ring-primary">
+                                <label for="crossModel5" class="ml-2 text-sm">U-Net (3D->2.5D)</label>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-5 gap-4" id="modelCompareContainer">
+                            <!-- 模型1 -->
+                            <div class="group model-compare-item" data-model="U-Net (2D)">
+                                <div class="image-container rounded-lg overflow-hidden relative">
+                                    <div id="unetImage" class="w-full h-full flex items-center justify-center bg-gray-100">
+                                        <div class="text-center text-gray-400">
+                                            <i class="fa fa-image text-4xl mb-2"></i>
+                                            <p class="text-sm">暂无分割结果</p>
+                                        </div>
+                                    </div>
+                                    <div class="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-medium">
+                                        U-Net (2D)
+                                    </div>
+                                </div>
+                                <div class="mt-2 p-2 bg-light-gray rounded-lg">
+                                    <div class="text-sm space-y-1">
+                                        <div class="flex">
+                                            <span>肿瘤面积: </span>
+                                            <span class="tumor-area font-medium">0</span> px²
+                                        </div>
+                                        <div class="flex">
+                                            <span>肿瘤周长: </span>
+                                            <span class="tumor-perimeter font-medium">0</span> px
+                                        </div>
+                                        <div class="flex">
+                                            <span>分割耗时: </span>
+                                            <span class="time-elapsed font-medium">0</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 模型2 -->
+                            <div class="group model-compare-item" data-model="SAM(2D)">
+                                <div class="image-container rounded-lg overflow-hidden relative">
+                                    <div id="samImage" class="w-full h-full flex items-center justify-center bg-gray-100">
+                                        <div class="text-center text-gray-400">
+                                            <i class="fa fa-image text-4xl mb-2"></i>
+                                            <p class="text-sm">暂无分割结果</p>
+                                        </div>
+                                    </div>
+                                    <div class="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-medium">
+                                        SAM(2D)
+                                    </div>
+                                </div>
+                                <div class="mt-2 p-2 bg-light-gray rounded-lg">
+                                    <div class="text-sm space-y-1">
+                                        <div class="flex">
+                                            <span>肿瘤面积: </span>
+                                            <span class="tumor-area font-medium">0</span> px²
+                                        </div>
+                                        <div class="flex">
+                                            <span>肿瘤周长: </span>
+                                            <span class="tumor-perimeter font-medium">0</span> px
+                                        </div>
+                                        <div class="flex">
+                                            <span>分割耗时: </span>
+                                            <span class="time-elapsed font-medium">0</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 模型3 Attention-UNet(2D)-->
+                            <div class="group model-compare-item" data-model="Attention-UNet(2D)" style="display:none">
+                                <div class="image-container rounded-lg overflow-hidden relative">
+                                    <div id="attentionUnetImage" class="w-full h-full flex items-center justify-center bg-gray-100">
+                                        <div class="text-center text-gray-400">
+                                            <i class="fa fa-image text-4xl mb-2"></i>
+                                            <p class="text-sm">暂无分割结果</p>
+                                        </div>
+                                    </div>
+                                    <div class="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-medium">
+                                        Attention-UNet(2D)
+                                    </div>
+                                </div>
+                                <div class="mt-2 p-2 bg-light-gray rounded-lg">
+                                    <div class="text-sm space-y-1">
+                                        <div class="flex">
+                                            <span>肿瘤面积: </span>
+                                            <span class="tumor-area font-medium">0</span> px²
+                                        </div>
+                                        <div class="flex">
+                                            <span>肿瘤周长: </span>
+                                            <span class="tumor-perimeter font-medium">0</span> px
+                                        </div>
+                                        <div class="flex">
+                                            <span>分割耗时: </span>
+                                            <span class="time-elapsed font-medium">0</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 模型4 - U-Net (2D->2.5D) -->
+                            <div class="group model-compare-item" data-model="U-Net (2D->2.5D)" style="display:none">
+                                <div class="image-container rounded-lg overflow-hidden relative">
+                                    <img src="https://picsum.photos/seed/model3/400/400" alt="U-Net (2D->2.5D)结果" class="w-full h-full object-cover">
+                                    <div class="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-medium">
+                                        U-Net (2D->2.5D)
+                                    </div>
+                                    <div class="absolute inset-0 mask-layer" id="model3LiverMask"></div>
+                                    <div class="absolute inset-0 mask-layer" id="model3TumorMask"></div>
+                                </div>
+                                <div class="mt-2 p-2 bg-light-gray rounded-lg">
+                                    <div class="text-sm space-y-1">
+                                        <div class="flex">
+                                            <span>肿瘤面积: </span>
+                                            <span class="tumor-area font-medium">0</span> px²
+                                        </div>
+                                        <div class="flex">
+                                            <span>肿瘤周长: </span>
+                                            <span class="tumor-perimeter font-medium">0</span> px
+                                        </div>
+                                        <div class="flex">
+                                            <span>分割耗时: </span>
+                                            <span class="time-elapsed font-medium">0</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 模型5 - U-Net (3D->2.5D) -->
+                            <div class="group model-compare-item" data-model="U-Net (3D->2.5D)" style="display:none">
+                                <div class="image-container rounded-lg overflow-hidden relative">
+                                    <img src="https://picsum.photos/seed/model4/400/400" alt="U-Net (3D->2.5D)结果" class="w-full h-full object-cover">
+                                    <div class="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-medium">
+                                        U-Net (3D->2.5D)
+                                    </div>
+                                    <div class="absolute inset-0 mask-layer" id="model4LiverMask"></div>
+                                    <div class="absolute inset-0 mask-layer" id="model4TumorMask"></div>
+                                </div>
+                                <div class="mt-2 p-2 bg-light-gray rounded-lg">
+                                    <div class="text-sm space-y-1">
+                                        <div class="flex">
+                                            <span>肿瘤面积: </span>
+                                            <span class="tumor-area font-medium">0</span> px²
+                                        </div>
+                                        <div class="flex">
+                                            <span>肿瘤周长: </span>
+                                            <span class="tumor-perimeter font-medium">0</span> px
+                                        </div>
+                                        <div class="flex">
+                                            <span>分割耗时: </span>
+                                            <span class="time-elapsed font-medium">0</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- <div class="h-64">
+                            <canvas id="crossCompareRadar"></canvas>
+                        </div> -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="bg-white border-t border-gray-200 py-4 mt-6">
+        <div class="container mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="mb-4 md:mb-0">
+                    <p class="text-sm text-gray-500">© 2025 医学图像分割系统. 保留所有权利.</p>
+                </div>
+                <div class="flex space-x-4">
+                    <a href="#" class="text-gray-500 hover:text-primary transition-colors">
+                        <i class="fa fa-github"></i>
+                    </a>
+                    <a href="#" class="text-gray-500 hover:text-primary transition-colors">
+                        <i class="fa fa-twitter"></i>
+                    </a>
+                    <a href="#" class="text-gray-500 hover:text-primary transition-colors">
+                        <i class="fa fa-linkedin"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 存储分割结果
+            let segmentationResults = {};
+            
+            // 模型性能数据集
+            const modelPerformanceData = {
+                "U-Net (2D)": {
+                    accuracy: [30, 37, 42, 49, 55, 62, 68, 75, 81, 88, 94],
+                    recall: [44.3, 52.1, 58.9, 63.4, 72.8, 76.5, 81.2, 87.6, 91.3, 95.4, 98.7],
+                    dice: [55, 68, 75, 80, 83, 85, 87, 88, 90, 91, 92],
+                    iou: [10.45, 10.58, 10.65, 10.70, 10.73, 10.75, 10.77, 10.78, 10.80, 10.81, 10.86],
+                    voe: [3.6, 7.2, 9.8, 12.5, 15.1, 17.7, 20.3, 22.9, 24.5, 26.1, 27.93],
+                    rvd: [1.04, 3.2, 5.5, 7.01, 8.3, 10.7, 12.0, 13.8, 15.2, 16.9, 18.01],
+                    msd: [7.43, 12.8, 18.21, 23.5, 28.76, 34.0, 39.2, 44.3, 49.4, 52.9, 55.696],
+                    asd: [0.076, 0.18, 0.29, 0.42, 0.55, 0.71, 0.88, 1.05, 1.23, 1.36, 1.473],
+                    rmsd: [0.574, 0.89, 1.25, 1.62, 1.95, 2.31, 2.67, 3.02, 3.38, 3.75, 4.307],
+                    metrics: {
+                        dice_liver: "89.76",
+                        iou_liver: "87.50",
+                        dice_liver_tumor: "91.67",
+                        iou_liver_tumor: "90.79",
+                        pixel_accuracy: "99.49",
+                        rvd_liver: "6.00",
+                        asd_liver: "4.80",
+                        rvd_liver_tumor: "-35.34",
+                        asd_liver_tumor: "6.03"
+                    }
+                },
+                "SAM(2D)": {
+                    metrics: {}
+                },
+                "Attention-UNet(2D)": {
+                    accuracy: [35, 45, 55, 65, 75, 82, 88, 92, 95, 97, 98],
+                    recall: [50.5, 60.2, 68.4, 75.1, 80.3, 85.6, 89.2, 92.8, 95.1, 97.5, 99.0],
+                    dice: [60, 72, 80, 85, 88, 90, 91, 92, 93, 94, 95],
+                    iou: [11.2, 11.5, 11.7, 11.9, 12.0, 12.1, 12.2, 12.3, 12.4, 12.5, 12.6],
+                    voe: [3.2, 6.5, 9.0, 11.5, 14.0, 16.5, 19.0, 21.0, 22.5, 24.0, 25.5],
+                    rvd: [0.9, 2.8, 5.0, 6.8, 8.5, 10.2, 11.8, 13.2, 14.5, 15.8, 17.0],
+                    msd: [6.8, 12.0, 17.0, 22.0, 27.0, 32.0, 37.0, 42.0, 46.0, 49.0, 52.0],
+                    asd: [0.07, 0.17, 0.27, 0.39, 0.51, 0.65, 0.80, 0.95, 1.10, 1.22, 1.35],
+                    rmsd: [0.55, 0.85, 1.20, 1.55, 1.90, 2.25, 2.60, 2.95, 3.30, 3.65, 4.00],
+                    metrics: {
+                        dice_liver: "89.72",
+                        iou_liver: "87.49",
+                        dice_liver_tumor: "91.65",
+                        iou_liver_tumor: "90.82",
+                        pixel_accuracy: "99.47",
+                        rvd_liver: "39.09",
+                        asd_liver: "4.12",
+                        rvd_liver_tumor: "-15.28",
+                        asd_liver_tumor: "5.07"
+                    }
+                },
+                "U-Net (2D->2.5D)": {
+                    metrics: {}
+                },
+                "U-Net (3D->2.5D)": {
+                    accuracy: [25, 35, 48, 56, 63, 70, 76, 82, 87, 91, 95],
+                    recall: [40.1, 50.5, 60.2, 68.4, 75.1, 80.3, 85.6, 89.2, 92.8, 95.1, 97.5],
+                    dice: [50, 65, 72, 78, 82, 85, 88, 90, 92, 93, 94],
+                    iou: [9.8, 10.2, 10.5, 10.7, 10.8, 10.9, 11.0, 11.1, 11.2, 11.3, 11.4],
+                    voe: [4.2, 8.1, 11.5, 14.2, 16.8, 19.3, 21.7, 23.8, 25.6, 27.1, 28.5],
+                    rvd: [1.8, 4.1, 6.3, 8.2, 9.8, 11.5, 13.1, 14.6, 15.9, 17.2, 18.5],
+                    msd: [8.2, 14.3, 19.8, 25.1, 30.2, 35.1, 39.8, 44.3, 48.6, 51.8, 54.9],
+                    asd: [0.085, 0.21, 0.32, 0.45, 0.58, 0.72, 0.87, 1.03, 1.19, 1.32, 1.45],
+                    rmsd: [0.62, 0.95, 1.31, 1.68, 2.02, 2.37, 2.72, 3.06, 3.41, 3.78, 4.15],
+                    metrics: {
+                        dice_liver_tumor: "87",
+                        iou_liver_tumor: "77",
+                        voe: "36.7",
+                        rvd_liver_tumor: "-10.2",
+                        msd: "6.63",
+                        asd: "1.45",
+                        rmsd: "1.673"
+                    }
+                }
+            };
+
+            // 初始化性能图表
+            // const segmentationAccuracyCtx = document.getElementById('segmentationAccuracyChart').getContext('2d');
+            // const segmentationAccuracyChart = new Chart(segmentationAccuracyCtx, {
+            //     type: 'line',
+            //     data: {
+            //         labels: ['Epoch 1', 'Epoch 5', 'Epoch 10', 'Epoch 15', 'Epoch 20', 'Epoch 25', 'Epoch 30', 'Epoch 35', 'Epoch 40', 'Epoch 45', 'Epoch 50'],
+            //         datasets: [{
+            //             label: '精确率',
+            //             data: modelPerformanceData["U-Net (2D)"].accuracy,
+            //             borderColor: '#9370DB',
+            //             backgroundColor: 'rgba(147, 112, 219, 0.2)',
+            //             tension: 0.4
+            //         }, {
+            //             label: '召回率',
+            //             data: modelPerformanceData["U-Net (2D)"].recall,
+            //             borderColor: '#FFD700',
+            //             backgroundColor: 'rgba(255, 215, 0, 0.2)',
+            //             tension: 0.4
+            //         }, {
+            //             label: 'Dice系数',
+            //             data: modelPerformanceData["U-Net (2D)"].dice,
+            //             borderColor: '#165DFF',
+            //             backgroundColor: 'rgba(70, 130, 180, 0.2)',
+            //             tension: 0.4
+            //         }, {
+            //             label: 'IoU',
+            //             data: modelPerformanceData["U-Net (2D)"].iou,
+            //             borderColor: '#36CFC9',
+            //             backgroundColor: 'rgba(54, 207, 201, 0.1)',
+            //             tension: 0.4
+            //         }]
+            //     },
+            //     options: {
+            //         responsive: true,
+            //         maintainAspectRatio: false,
+            //         plugins: {
+            //             legend: {
+            //                 position: 'top',
+            //                 labels: {
+            //                     usePointStyle: true,
+            //                     boxWidth: 6,
+            //                     onClick: function(e, legendItem, legend) {
+            //                         const chart = legend.chart;
+            //                         Chart.defaults.plugins.legend.onClick.call(this, e, legendItem, legend);
+            //                         updateYAxisScale(chart);
+            //                     }
+            //                 }
+            //             }
+            //         },
+            //         scales: {
+            //             y: {
+            //                 beginAtZero: true,
+            //                 max: undefined,
+            //                 ticks: {
+            //                     callback: function(value) {
+            //                         if (value <= 1) {
+            //                             return value.toFixed(1);
+            //                         }
+            //                         return value;
+            //                     }
+            //                 }
+            //             }
+            //         }
+            //     }
+            // });
+
+            // const performanceCtx = document.getElementById('performanceChart').getContext('2d');
+            // const performanceChart = new Chart(performanceCtx, {
+            //     type: 'line',
+            //     data: {
+            //         labels: ['Epoch 1', 'Epoch 5', 'Epoch 10', 'Epoch 15', 'Epoch 20', 'Epoch 25', 'Epoch 30', 'Epoch 35', 'Epoch 40', 'Epoch 45', 'Epoch 50'],
+            //         datasets: [{
+            //             label: 'VOE (%)',
+            //             data: modelPerformanceData["U-Net (3D->2.5D)"].voe,
+            //             borderColor: '#FF4500',
+            //             backgroundColor: 'rgba(255, 0, 0, 0.2)',
+            //             tension: 0.4
+            //         }, {
+            //             label: 'RVD (%)',
+            //             data: modelPerformanceData["U-Net (3D->2.5D)"].rvd,
+            //             borderColor: '#FFD700',
+            //             backgroundColor: 'rgba(255, 215, 0, 0.2)',
+            //             tension: 0.4
+            //         }, {
+            //             label: 'MSD(mm)',
+            //             data: modelPerformanceData["U-Net (3D->2.5D)"].msd,
+            //             borderColor: '#165DFF',
+            //             backgroundColor: 'rgba(70, 130, 180, 0.2)',
+            //             tension: 0.4
+            //         }, {
+            //             label: 'ASD(mm)',
+            //             data: modelPerformanceData["U-Net (3D->2.5D)"].asd,
+            //             borderColor: '#36CFC9',
+            //             backgroundColor: 'rgba(54, 207, 201, 0.1)',
+            //             tension: 0.4
+            //         }, {
+            //             label: 'RMSD(mm)',
+            //             data: modelPerformanceData["U-Net (3D->2.5D)"].rmsd,
+            //             borderColor: '#9370DB',
+            //             backgroundColor: 'rgba(147, 112, 219, 0.2)',
+            //             tension: 0.4
+            //         }]
+            //     },
+            //     options: {
+            //         responsive: true,
+            //         maintainAspectRatio: false,
+            //         plugins: {
+            //             legend: {
+            //                 position: 'top',
+            //                 labels: {
+            //                     usePointStyle: true,
+            //                     boxWidth: 6,
+            //                     onClick: function(e, legendItem, legend) {
+            //                         const chart = legend.chart;
+            //                         Chart.defaults.plugins.legend.onClick.call(this, e, legendItem, legend);
+            //                         updateYAxisScale(chart);
+            //                     }
+            //                 }
+            //             }
+            //         },
+            //         scales: {
+            //             y: {
+            //                 beginAtZero: true,
+            //                 max: undefined,
+            //                 ticks: {
+            //                     callback: function(value) {
+            //                         if (value <= 1) {
+            //                             return value.toFixed(1);
+            //                         }
+            //                         return value;
+            //                     }
+            //                 }
+            //             }
+            //         }
+            //     }
+            // });
+
+            // 动态更新y轴范围的函数
+            function updateYAxisScale(chart) {
+                const visibleDatasets = chart.data.datasets.filter(ds => !ds.hidden);
+                let maxValue = 0;
+
+                visibleDatasets.forEach(dataset => {
+                    const currentMax = Math.max(...dataset.data);
+                    if (currentMax > maxValue) {
+                        maxValue = currentMax;
+                    }
+                });
+
+                // 根据数据范围智能设置最大值
+                if (maxValue <= 1) {
+                    chart.options.scales.y.max = 1.0;
+                } else if (maxValue <= 10) {
+                    chart.options.scales.y.max = Math.ceil(maxValue * 1.2); // 增加20%余量
+                } else {
+                    chart.options.scales.y.max = Math.ceil(maxValue / 10) * 10; // 取整到最近的10的倍数
+                }
+
+                chart.update();
+            }
+
+             // 模型选择事件监听
+            document.getElementById('modelSelect').addEventListener('change', function() {
+                const selectedModel = this.value;
+                
+                // 隐藏所有图片
+                document.getElementById('unetMetricsImg').classList.add('hidden');
+                document.getElementById('attentionMetricsImg').classList.add('hidden');
+                document.getElementById('unetLossImg').classList.add('hidden');
+                document.getElementById('attentionLossImg').classList.add('hidden');
+                
+                // 根据模型类型显示对应图片
+                switch(selectedModel) {
+                    case 'U-Net (2D)':
+                        document.getElementById('unetMetricsImg').classList.remove('hidden');
+                        document.getElementById('unetLossImg').classList.remove('hidden');
+                        break;
+                    case 'Attention-UNet(2D)':
+                        document.getElementById('attentionMetricsImg').classList.remove('hidden');
+                        document.getElementById('attentionLossImg').classList.remove('hidden');
+                        break;
+                    case 'SAM(2D)':
+                        // SAM模型不显示任何曲线图，或可以添加专门的SAM图片
+                        break;
+                    case 'U-Net (2D->2.5D)':
+                    case 'U-Net (3D->2.5D)':
+                        // 2.5D版本使用专用图片或保持隐藏
+                        break;
+                }
+                
+                updatePerformanceData(selectedModel);
+            });
+
+            // 更新性能数据函数
+            function updatePerformanceData(modelName) {
+                const modelData = modelPerformanceData[modelName] || { metrics: {} };
+                
+                // 更新图表数据
+                // segmentationAccuracyChart.data.datasets[0].data = modelData.accuracy;
+                // segmentationAccuracyChart.data.datasets[1].data = modelData.recall;
+                // segmentationAccuracyChart.data.datasets[2].data = modelData.dice;
+                // segmentationAccuracyChart.data.datasets[3].data = modelData.iou;
+                // segmentationAccuracyChart.update();
+                
+                // performanceChart.data.datasets[0].data = modelData.voe;
+                // performanceChart.data.datasets[1].data = modelData.rvd;
+                // performanceChart.data.datasets[2].data = modelData.msd;
+                // performanceChart.data.datasets[3].data = modelData.asd;
+                // performanceChart.data.datasets[4].data = modelData.rmsd;
+                // performanceChart.update();
+                
+                // 更新指标数值（移除了precision和recall）
+                document.getElementById('diceLiverValue').textContent = modelData.metrics.dice_liver || '-';
+                document.getElementById('iouLiverValue').textContent = modelData.metrics.iou_liver || '-';
+                document.getElementById('diceLiverTumorValue').textContent = modelData.metrics.dice_liver_tumor || '-';
+                document.getElementById('iouLiverTumorValue').textContent = modelData.metrics.iou_liver_tumor || '-';
+                document.getElementById('pixelAccuracyValue').textContent = modelData.metrics.pixel_accuracy || '-';
+                document.getElementById('rvdLiverValue').textContent = modelData.metrics.rvd_liver || '-';
+                document.getElementById('asdLiverValue').textContent = modelData.metrics.asd_liver || '-';
+                document.getElementById('rvdLiverTumorValue').textContent = modelData.metrics.rvd_liver_tumor || '-';
+                document.getElementById('asdLiverTumorValue').textContent = modelData.metrics.asd_liver_tumor || '-';
+                document.getElementById('msdValue').textContent = modelData.metrics.msd || '-';
+                document.getElementById('rmsdValue').textContent = modelData.metrics.rmsd || '-';
+                document.getElementById('voeValue').textContent = modelData.metrics.voe || '-';
+            }
+            
+            // 初始化参数对比图表
+            // const paramCompareCtx = document.getElementById('paramCompareChart').getContext('2d');
+            // const paramCompareChart = new Chart(paramCompareCtx, {
+            //     type: 'bar',
+            //     data: {
+            //         labels: ['Dice系数', 'VOE', 'MSD', 'ASD', 'RMSD', '耗时'],
+            //         datasets: [{
+            //             label: '参数组A',
+            //             data: [0.87, 27.9, 5.6, 1.5, 4.3, 2.3],
+            //             backgroundColor: 'rgba(22, 93, 255, 0.7)',
+            //             borderColor: 'rgba(22, 93, 255, 1)',
+            //             borderWidth: 1
+            //         }, {
+            //             label: '参数组B',
+            //             data: [0.92, 22.5, 4.2, 1.2, 3.8, 3.5],
+            //             backgroundColor: 'rgba(54, 207, 201, 0.7)',
+            //             borderColor: 'rgba(54, 207, 201, 1)',
+            //             borderWidth: 1
+            //         }]
+            //     },
+            //     options: {
+            //         responsive: true,
+            //         maintainAspectRatio: false,
+            //         scales: {
+            //             y: {
+            //                 beginAtZero: true
+            //             }
+            //         }
+            //     }
+            // });
+
+            // 初始化跨模型对比雷达图
+            // const crossCompareCtx = document.getElementById('crossCompareRadar').getContext('2d');
+            // const crossCompareRadar = new Chart(crossCompareCtx, {
+            //     type: 'radar',
+            //     data: {
+            //         labels: ['Dice系数', '精确率', '召回率', 'VOE', 'MSD', 'ASD', 'RMSD'],
+            //         datasets: [{
+            //             label: 'U-Net (2D)',
+            //             data: [0.87, 0.94, 0.89, 27.9, 5.6, 1.5, 4.3],
+            //             backgroundColor: 'rgba(22, 93, 255, 0.2)',
+            //             borderColor: 'rgba(22, 93, 255, 1)',
+            //             pointBackgroundColor: 'rgba(22, 93, 255, 1)',
+            //             pointBorderColor: '#fff',
+            //             pointHoverBackgroundColor: '#fff',
+            //             pointHoverBorderColor: 'rgba(22, 93, 255, 1)'
+            //         }, {
+            //             label: 'SAM(2D)',
+            //             data: [0.92, 0.95, 0.91, 22.5, 4.2, 1.2, 3.8],
+            //             backgroundColor: 'rgba(54, 207, 201, 0.2)',
+            //             borderColor: 'rgba(54, 207, 201, 1)',
+            //             pointBackgroundColor: 'rgba(54, 207, 201, 1)',
+            //             pointBorderColor: '#fff',
+            //             pointHoverBackgroundColor: '#fff',
+            //             pointHoverBorderColor: 'rgba(54, 207, 201, 1)'
+            //         }]
+            //     },
+            //     options: {
+            //         responsive: true,
+            //         maintainAspectRatio: false,
+            //         scales: {
+            //             r: {
+            //                 angleLines: {
+            //                     display: true
+            //                 },
+            //                 suggestedMin: 0,
+            //                 suggestedMax: 10
+            //             }
+            //         }
+            //     }
+            // });
+            
+            // 滑块事件处理
+            document.getElementById('batchSizeSlider').addEventListener('input', function() {
+                document.getElementById('batchSizeValue').textContent = this.value;
+            });
+            
+            document.getElementById('epochsSlider').addEventListener('input', function() {
+                document.getElementById('epochsValue').textContent = this.value;
+            });
+            
+            document.getElementById('lrSlider').addEventListener('input', function() {
+                document.getElementById('lrValue').textContent = parseFloat(this.value).toFixed(4);
+            });
+            
+            // 获取关键DOM元素
+            const opacitySlider = document.getElementById('opacitySlider');
+            const opacityValue = document.getElementById('opacityValue');
+            const showLiver = document.getElementById('showLiver');
+            const showTumor = document.getElementById('showTumor');
+            const liverMask = document.getElementById('liverMask');
+            const tumorMask = document.getElementById('tumorMask');
+            const segmentationStatus = document.getElementById('segmentationStatus');
+            const resultContainer = document.getElementById('resultContainer');
+            const resultImageContainer = document.getElementById('resultImageContainer');
+            const noResultMessage = document.getElementById('noResultMessage');
+            const segmentationControls = document.getElementById('segmentationControls');
+            
+            // 透明度控制
+            opacitySlider.addEventListener('input', () => {
+                opacityValue.textContent = opacitySlider.value;
+                updateMasks();
+            });
+
+            // 显示/隐藏肝脏标签
+            showLiver.addEventListener('change', updateMasks);
+
+            // 显示/隐藏肿瘤标签
+            showTumor.addEventListener('change', updateMasks);
+            
+            // 更新遮罩显示
+            function updateMasks() {
+                const opacity = opacitySlider.value / 100;
+                
+                // 肝脏遮罩
+                if (liverMask.dataset.mask) {
+                    liverMask.style.display = showLiver.checked ? 'block' : 'none';
+                    liverMask.style.opacity = opacity;
+                }
+                
+                // 肿瘤遮罩
+                if (tumorMask.dataset.mask) {
+                    tumorMask.style.display = showTumor.checked ? 'block' : 'none';
+                    tumorMask.style.opacity = opacity;
+                }
+            }
+            
+            // 文件拖放处理
+            const fileDropArea = document.getElementById('fileDropArea');
+            const fileInput2D = document.getElementById('fileInput2D');
+            const fileInput2_5D = document.getElementById('fileInput2_5D');
+            const browseButton = document.getElementById('browseButton');
+            const uploadHint = document.getElementById('uploadHint');
+            const loadedFiles = document.getElementById('loadedFiles');
+            const originalImages = document.getElementById('originalImages');
+            const noImagesMessage = document.getElementById('noImagesMessage');
+            const imageCountText = document.getElementById('imageCountText');
+            const pagination = document.getElementById('pagination');
+            const clearCurrent = document.getElementById('clearCurrent');
+            const runSegmentation = document.getElementById('runSegmentation');
+            
+            let currentMode = '2D'; // '2D' 或 '2.5D'
+            let currentPage = 1;
+            const itemsPerPage = 3;
+            const uploaded2DFiles = new Map(); // 存储2D文件
+            const uploaded2_5DSeries = new Map(); // 存储2.5D序列
+            let selectedFile = null; // 存储当前选中的文件
+            let currentSeries = null; // 存储当前选中的2.5D序列
+            
+            // 初始化模式
+            switchMode('2D');
+            
+            // 模式切换函数
+            function switchMode(mode) {
+                currentMode = mode;
+                if (mode === '2D') {
+                    document.getElementById('mode2D').classList.add('bg-primary', 'text-white');
+                    document.getElementById('mode2D').classList.remove('border', 'border-gray-300');
+                    document.getElementById('mode2_5D').classList.remove('bg-primary', 'text-white');
+                    document.getElementById('mode2_5D').classList.add('border', 'border-gray-300');
+                    uploadHint.textContent = '拖放图片文件到此处';
+                } else {
+                    document.getElementById('mode2_5D').classList.add('bg-primary', 'text-white');
+                    document.getElementById('mode2_5D').classList.remove('border', 'border-gray-300');
+                    document.getElementById('mode2D').classList.remove('bg-primary', 'text-white');
+                    document.getElementById('mode2D').classList.add('border', 'border-gray-300');
+                    uploadHint.textContent = '拖放图片文件夹到此处';
+                }
+                refreshFileList();
+            }
+
+            // 刷新文件列表显示
+            function refreshFileList() {
+                loadedFiles.innerHTML = '';
+                
+                if (currentMode === '2D') {
+                    // 显示2D文件
+                    uploaded2DFiles.forEach((file, filename) => {
+                        add2DFileToUI(file);
+                    });
+                } else {
+                    // 显示2.5D序列
+                    uploaded2_5DSeries.forEach((series, seriesId) => {
+                        add2_5DSeriesToUI(seriesId, series.name, series.files);
+                    });
+                }
+            }
+            
+            // 添加2D文件到UI
+            function add2DFileToUI(file) {
+                const fileExt = file.name.split('.').pop().toLowerCase();
+                let fileIcon;
+                if (['png', 'jpg', 'jpeg', 'bmp'].includes(fileExt)) {
+                    fileIcon = 'fa-file-image-o';
+                } else if (fileExt === 'dcm') {
+                    fileIcon = 'fa-file-medical-o'; 
+                } else {
+                    fileIcon = 'fa-file-o';
+                }
+
+                const fileSize = (file.size / (1024 * 1024)).toFixed(2) + 'MB';
+
+                const fileElement = document.createElement('div');
+                fileElement.classList.add('flex', 'items-center', 'p-2', 'bg-light-gray', 'rounded-lg', 'cursor-pointer', 'file-item');
+                fileElement.innerHTML = `
+                    <i class="fa ${fileIcon} text-primary mr-2"></i>
+                    <span class="text-sm flex-grow truncate">${file.name}</span>
+                    <span class="text-xs text-gray-500">${fileSize}</span>
+                    <button class="ml-2 text-gray-400 hover:text-primary transition-colors compare-btn" title="设为对比对象">
+                        <i class="fa fa-columns"></i>
+                    </button>
+                    <button class="ml-2 text-gray-400 hover:text-danger transition-colors delete-btn" title="删除">
+                        <i class="fa fa-times"></i>
+                    </button>
+                `;
+
+                // 获取文件名显示元素
+                const fileNameSpan = fileElement.querySelector('span.text-sm');
+
+                // 点击选择文件
+                fileElement.addEventListener('click', (e) => {
+                    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'I') return;
+                    
+                    // 取消之前选中的文件/序列
+                    document.querySelectorAll('.file-item.selected').forEach(el => {
+                        el.classList.remove('selected');
+                    });
+                    
+                    // 选中当前文件
+                    fileElement.classList.add('selected');
+                    selectedFile = file;
+                    currentSeries = null;
+                    currentPage = 1;
+                    
+                    // 显示选中的图像
+                    if (isImageFile(file)) {
+                        displayOriginalImage(file);
+                    }
+                });
+
+                // 点击对比按钮事件
+                const compareButton = fileElement.querySelector('.compare-btn');
+                compareButton.addEventListener('click', (e) => {
+                    e.stopPropagation(); // 阻止事件冒泡
+                    
+                    // 切换对比状态
+                    if (fileElement.classList.contains('comparing')) {
+                        // 如果已经是对比状态，则取消
+                        fileElement.classList.remove('comparing');
+                        fileNameSpan.textContent = file.name;
+                        document.getElementById('compareFileName').textContent = '未选择';
+                    } else {
+                        // 先取消其他所有文件的对比状态
+                        document.querySelectorAll('.file-item.comparing').forEach(el => {
+                            el.classList.remove('comparing');
+                            const otherNameSpan = el.querySelector('span.text-sm');
+                            otherNameSpan.textContent = otherNameSpan.textContent.replace('（对比中）', '');
+                        });
+                        
+                        // 设置当前文件为对比状态
+                        fileElement.classList.add('comparing');
+                        fileNameSpan.textContent = `${file.name}（对比中）`;
+
+                        document.getElementById('compareFileName').textContent = file.name;
+                        
+                        // 加载对比数据
+                        const compareMode = document.getElementById('compareMode').value;
+                        loadCompareData(compareMode, file);
+                    }
+                });
+
+                // 修改这里：使用更精确的选择器选择删除按钮
+                const deleteButton = fileElement.querySelector('.delete-btn');
+                deleteButton.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    uploaded2DFiles.delete(file.name);
+
+                    // 如果这个文件有分割结果，也删除
+                    if (segmentationResults[file.name]) {
+                        delete segmentationResults[file.name];
+                    }
+
+                    // 重置文件输入
+                    fileInput2D.value = '';
+                    
+                    // 如果删除的是当前选中的文件
+                    if (selectedFile && selectedFile.name === file.name) {
+                        selectedFile = null;
+                        removeImages();
+                    }
+                    
+                    loadedFiles.removeChild(fileElement);
+                });
+
+                loadedFiles.appendChild(fileElement);
+            }
+            
+            // 添加2.5D序列到UI
+            function add2_5DSeriesToUI(seriesId, folderName, files) {
+                const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+                const sizeMB = (totalSize / (1024 * 1024)).toFixed(2) + 'MB';
+                
+                const seriesElement = document.createElement('div');
+                seriesElement.classList.add('flex', 'items-center', 'p-2', 'bg-light-gray', 'rounded-lg', 'cursor-pointer', 'file-item');
+                seriesElement.innerHTML = `
+                    <i class="fa fa-folder-open text-primary mr-2"></i>
+                    <span class="text-sm flex-grow truncate">${folderName}</span>
+                    <span class="text-xs text-gray-500">${files.length}张图片, ${sizeMB}</span>
+                    <button class="ml-2 text-gray-400 hover:text-primary transition-colors compare-btn" title="设为对比对象">
+                        <i class="fa fa-columns"></i>对比
+                    </button>
+                    <button class="ml-2 text-gray-400 hover:text-danger transition-colors delete-btn" title="删除">
+                        <i class="fa fa-times"></i>
+                    </button>
+                `;
+                
+                // 获取序列名称显示元素
+                const seriesNameSpan = seriesElement.querySelector('span.text-sm');
+                
+                // 点击选择序列
+                seriesElement.addEventListener('click', (e) => {
+                    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'I') return;
+                    
+                    // 取消之前选中的文件/序列
+                    document.querySelectorAll('.file-item.selected').forEach(el => {
+                        el.classList.remove('selected');
+                    });
+                    
+                    seriesElement.classList.add('selected');
+                    currentSeries = {
+                        id: seriesId,
+                        name: folderName,
+                        files: files
+                    };
+                    selectedFile = null;
+                    currentPage = 1;
+                    
+                    // 显示序列中的图片
+                    displaySeries(currentSeries);
+                });
+                
+                // 点击对比按钮事件
+                const compareButton = seriesElement.querySelector('.compare-btn');
+                compareButton.addEventListener('click', (e) => {
+                    e.stopPropagation(); // 阻止事件冒泡
+                    
+                    // 切换对比状态
+                    if (seriesElement.classList.contains('comparing')) {
+                        // 如果已经是对比状态，则取消
+                        seriesElement.classList.remove('comparing');
+                        seriesNameSpan.textContent = folderName;
+                        document.getElementById('compareFileName').textContent = '未选择';
+                    } else {
+                        // 先取消其他所有文件/序列的对比状态
+                        document.querySelectorAll('.file-item.comparing').forEach(el => {
+                            el.classList.remove('comparing');
+                            const otherNameSpan = el.querySelector('span.text-sm');
+                            otherNameSpan.textContent = otherNameSpan.textContent.replace('（对比中）', '');
+                        });
+                        
+                        // 设置当前序列为对比状态
+                        seriesElement.classList.add('comparing');
+                        seriesNameSpan.textContent = `${folderName}（对比中）`;
+
+                        document.getElementById('compareFileName').textContent = folderName;
+                        
+                        // 加载对比数据
+                        const compareMode = document.getElementById('compareMode').value;
+                        loadCompareData(compareMode, { name: folderName });
+                    }
+                });
+                
+                // 删除按钮事件
+                const deleteButton = seriesElement.querySelector('.delete-btn');
+                deleteButton.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    uploaded2_5DSeries.delete(seriesId);
+
+                    // 如果这个序列有分割结果，也删除
+                    if (segmentationResults[folderName]) {
+                        delete segmentationResults[folderName];
+                    }
+
+                    // 重置文件输入
+                    fileInput2_5D.value = '';
+                    
+                    // 如果删除的是当前选中的序列
+                    if (currentSeries && currentSeries.id === seriesId) {
+                        currentSeries = null;
+                        removeImages();
+                    }
+                    
+                    loadedFiles.removeChild(seriesElement);
+                });
+                
+                loadedFiles.appendChild(seriesElement);
+            }
+            
+            // 2D文件处理
+            function handle2DFiles(files) {
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    if (!uploaded2DFiles.has(file.name)) {
+                        uploaded2DFiles.set(file.name, file);
+                        if (currentMode === '2D') {
+                            add2DFileToUI(file);
+                        }
+                    }
+                }
+            }
+            
+            // 2.5D序列处理
+            function handle2_5DFiles(files) {
+                const folderMap = new Map();
+                
+                // 按文件夹分组
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    const webkitPath = file.webkitRelativePath;
+                    if (webkitPath) {
+                        const folderName = webkitPath.split('/')[0];
+                        if (!folderMap.has(folderName)) {
+                            folderMap.set(folderName, []);
+                        }
+                        folderMap.get(folderName).push(file);
+                    }
+                }
+                
+                // 添加到UI
+                folderMap.forEach((files, folderName) => {
+                    const seriesId = `series_${Date.now()}`;
+                    // 按文件名排序
+                    const sortedFiles = files.sort((a, b) => a.name.localeCompare(b.name));
+                    uploaded2_5DSeries.set(seriesId, {
+                        name: folderName,
+                        files: sortedFiles
+                    });
+                    
+                    if (currentMode === '2.5D') {
+                        add2_5DSeriesToUI(seriesId, folderName, sortedFiles);
+                    }
+                });
+            }
+            
+            // 浏览按钮点击事件
+            browseButton.addEventListener('click', () => {
+                if (currentMode === '2D') {
+                    fileInput2D.click();
+                } else {
+                    fileInput2_5D.click();
+                }
+            });
+            
+            // 文件输入事件
+            fileInput2D.addEventListener('change', (e) => {
+                if (e.target.files.length) {
+                    handle2DFiles(e.target.files);
+                }
+            });
+            
+            fileInput2_5D.addEventListener('change', (e) => {
+                if (e.target.files.length) {
+                    handle2_5DFiles(e.target.files);
+                }
+            });
+            
+            // 拖放区域事件
+            fileDropArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                fileDropArea.classList.add('border-primary', 'bg-primary/5');
+            });
+            
+            fileDropArea.addEventListener('dragleave', () => {
+                fileDropArea.classList.remove('border-primary', 'bg-primary/5');
+            });
+            
+            fileDropArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                fileDropArea.classList.remove('border-primary', 'bg-primary/5');
+                
+                if (e.dataTransfer.files.length) {
+                    if (currentMode === '2D') {
+                        handle2DFiles(e.dataTransfer.files);
+                    } else {
+                        // 检查是否拖放了文件夹
+                        const hasDirectory = Array.from(e.dataTransfer.items).some(item => {
+                            const entry = item.webkitGetAsEntry();
+                            return entry && entry.isDirectory;
+                        });
+                        
+                        if (hasDirectory) {
+                            handle2_5DFiles(e.dataTransfer.files);
+                        } else {
+                            alert('2.5D模式请上传文件夹');
+                        }
+                    }
+                }
+            });
+            
+            // 模式切换按钮事件
+            document.getElementById('mode2D').addEventListener('click', () => {
+                switchMode('2D');
+            });
+            
+            document.getElementById('mode2_5D').addEventListener('click', () => {
+                switchMode('2.5D');
+            });
+
+            function isImageFile(file) {
+                const ext = file.name.split('.').pop().toLowerCase();
+                return ['png', 'jpg', 'jpeg', 'bmp'].includes(ext);
+            }
+
+            // 显示原始图像（仅用于原始图像区域）
+            function displayOriginalImage(file) {
+                if (!isImageFile(file)) return;
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    originalImages.innerHTML = '';
+                    
+                    const imageElement = document.createElement('div');
+                    imageElement.classList.add('group', 'image-item');
+                    imageElement.dataset.filename = file.name;
+                    imageElement.innerHTML = `
+                        <div class="image-container rounded-lg overflow-hidden">
+                            <img src="${e.target.result}" alt="${file.name}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105">
+                        </div>
+                        <div class="mt-2 flex justify-between items-center">
+                            <span class="text-sm font-medium truncate">${file.name}</span>
+                        </div>
+                    `;
+                    
+                    originalImages.appendChild(imageElement);
+                    noImagesMessage.style.display = 'none';
+                    
+                    // 更新图像计数显示
+                    updateImageCounts();
+                };
+                reader.readAsDataURL(file);
+            }
+
+            // 显示系列图像（用于浏览多张切片）
+            function displaySeries(series) {
+                // 先清空容器并隐藏无图片提示
+                originalImages.innerHTML = '';
+                noImagesMessage.style.display = 'none';
+                
+                // 更新分页
+                updatePagination(series.files.length);
+                
+                // 筛选出图片文件
+                const imageFiles = series.files.filter(file => isImageFile(file));
+                
+                // 如果没有图片文件，显示提示并返回
+                if (imageFiles.length === 0) {
+                    noImagesMessage.style.display = 'flex';
+                    pagination.style.display = 'none';
+                    return;
+                }
+                
+                // 显示当前页的图片
+                const startIndex = (currentPage - 1) * itemsPerPage;
+                const endIndex = Math.min(currentPage * itemsPerPage, imageFiles.length);
+                
+                let loadedCount = 0;
+                const totalToLoad = endIndex - startIndex;
+                
+                for (let i = startIndex; i < endIndex; i++) {
+                    const file = imageFiles[i];
+                    const reader = new FileReader();
+                    
+                    reader.onload = function(e) {
+                        const imageElement = document.createElement('div');
+                        imageElement.classList.add('group', 'image-item');
+                        imageElement.innerHTML = `
+                            <div class="image-container rounded-lg overflow-hidden relative">
+                                <img src="${e.target.result}" alt="${file.name}" class="w-full h-full object-cover">
+                                <div class="absolute bottom-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
+                                    ${i+1}/${imageFiles.length}
+                                </div>
+                            </div>
+                            <div class="mt-2 flex justify-between items-center">
+                                <span class="text-sm font-medium truncate">${file.name}</span>
+                            </div>
+                        `;
+                        originalImages.appendChild(imageElement);
+                        
+                        loadedCount++;
+                        // 全部加载完成后更新计数
+                        if (loadedCount === totalToLoad) {
+                            updateImageCounts();
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                }
+            }
+
+            function updatePagination(totalItems) {
+                pagination.innerHTML = '';
+                const totalPages = Math.ceil(totalItems / itemsPerPage);
+                
+                if (totalPages <= 1) {
+                    pagination.style.display = 'none';
+                    return;
+                }
+                
+                pagination.style.display = 'flex';
+                
+                // 上一页按钮
+                const prevButton = document.createElement('button');
+                prevButton.innerHTML = '<i class="fa fa-chevron-left"></i>';
+                prevButton.classList.add('p-1', 'rounded-full', 'w-8', 'h-8', 'flex', 'items-center', 'justify-center', 'hover:bg-gray-100');
+                prevButton.disabled = currentPage === 1;
+                prevButton.addEventListener('click', () => {
+                    if (currentPage > 1) {
+                        currentPage--;
+                        displaySeries(currentSeries);
+                    }
+                });
+                pagination.appendChild(prevButton);
+                
+                // 页码按钮
+                const maxVisiblePages = 5;
+                let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+                let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+                
+                if (endPage - startPage + 1 < maxVisiblePages) {
+                    startPage = Math.max(1, endPage - maxVisiblePages + 1);
+                }
+                
+                // 第一页
+                if (startPage > 1) {
+                    const firstPageButton = document.createElement('button');
+                    firstPageButton.textContent = '1';
+                    firstPageButton.classList.add('p-1', 'rounded-full', 'w-8', 'h-8', 'flex', 'items-center', 'justify-center', 'hover:bg-gray-100');
+                    if (1 === currentPage) {
+                        firstPageButton.classList.add('bg-primary', 'text-white');
+                    }
+                    firstPageButton.addEventListener('click', () => {
+                        currentPage = 1;
+                        displaySeries(currentSeries);
+                    });
+                    pagination.appendChild(firstPageButton);
+                    
+                    if (startPage > 2) {
+                        const ellipsis = document.createElement('span');
+                        ellipsis.textContent = '...';
+                        ellipsis.classList.add('px-1', 'flex', 'items-center', 'justify-center');
+                        pagination.appendChild(ellipsis);
+                    }
+                }
+                
+                // 中间页码
+                for (let i = startPage; i <= endPage; i++) {
+                    const pageButton = document.createElement('button');
+                    pageButton.textContent = i;
+                    pageButton.classList.add('p-1', 'rounded-full', 'w-8', 'h-8', 'flex', 'items-center', 'justify-center', 'hover:bg-gray-100');
+                    if (i === currentPage) {
+                        pageButton.classList.add('bg-primary', 'text-white');
+                    }
+                    pageButton.addEventListener('click', () => {
+                        currentPage = i;
+                        displaySeries(currentSeries);
+                    });
+                    pagination.appendChild(pageButton);
+                }
+                
+                // 最后一页
+                if (endPage < totalPages) {
+                    if (endPage < totalPages - 1) {
+                        const ellipsis = document.createElement('span');
+                        ellipsis.textContent = '...';
+                        ellipsis.classList.add('px-1', 'flex', 'items-center', 'justify-center');
+                        pagination.appendChild(ellipsis);
+                    }
+                    
+                    const lastPageButton = document.createElement('button');
+                    lastPageButton.textContent = totalPages;
+                    lastPageButton.classList.add('p-1', 'rounded-full', 'w-8', 'h-8', 'flex', 'items-center', 'justify-center', 'hover:bg-gray-100');
+                    if (totalPages === currentPage) {
+                        lastPageButton.classList.add('bg-primary', 'text-white');
+                    }
+                    lastPageButton.addEventListener('click', () => {
+                        currentPage = totalPages;
+                        displaySeries(currentSeries);
+                    });
+                    pagination.appendChild(lastPageButton);
+                }
+                
+                // 下一页按钮
+                const nextButton = document.createElement('button');
+                nextButton.innerHTML = '<i class="fa fa-chevron-right"></i>';
+                nextButton.classList.add('p-1', 'rounded-full', 'w-8', 'h-8', 'flex', 'items-center', 'justify-center', 'hover:bg-gray-100');
+                nextButton.disabled = currentPage === totalPages;
+                nextButton.addEventListener('click', () => {
+                    if (currentPage < totalPages) {
+                        currentPage++;
+                        displaySeries(currentSeries);
+                    }
+                });
+                pagination.appendChild(nextButton);
+            }
+
+            function removeImages() {
+                originalImages.innerHTML = `
+                    <div class="col-span-3 flex items-center justify-center py-10 text-gray-400" id="noImagesMessage">
+                        <i class="fa fa-image text-4xl mr-3"></i>
+                        <span>请从左侧"已加载数据"中选择文件</span>
+                    </div>
+                `;
+                pagination.innerHTML = '';
+                updateImageCounts();
+                
+                // 重置分割结果区域
+                segmentationStatus.style.display = 'none';
+                liverMask.style.display = 'none';
+                tumorMask.style.display = 'none';
+                document.getElementById('noResultMessage').style.display = 'block';
+                resultImageContainer.innerHTML = '';
+                segmentationControls.style.display = 'none';
+            }
+
+            function updateImageCounts() {
+                if (currentSeries) {
+                    const startIndex = (currentPage - 1) * itemsPerPage + 1;
+                    const endIndex = Math.min(currentPage * itemsPerPage, currentSeries.files.length);
+                    imageCountText.textContent = `显示 ${startIndex}-${endIndex} / ${currentSeries.files.length} (${currentSeries.name})`;
+                } else if (selectedFile) {
+                    imageCountText.textContent = `当前显示: ${selectedFile.name}`;
+                } else {
+                    imageCountText.textContent = '未选择图像';
+                }
+            }
+            
+            // 清除当前图片
+            clearCurrent.addEventListener('click', () => {
+                if (!selectedFile && !currentSeries) {
+                    alert('没有选中的图像文件或序列');
+                    return;
+                }
+                
+                if (confirm('确定要清除当前显示的图像吗？')) {
+                    // 清除左侧文件的选择状态
+                    document.querySelectorAll('.file-item.selected').forEach(el => {
+                        el.classList.remove('selected');
+                    });
+                    
+                    selectedFile = null;
+                    currentSeries = null;
+                    removeImages();
+                }
+            });
+            
+            // 模型选择勾选框事件监听
+            document.querySelectorAll('input[name="modelCompare"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    if (!this.checked) return;
+                    
+                    // 获取当前对比文件名
+                    const currentFileName = document.getElementById('compareFileName').textContent;
+                    if (currentFileName === '未选择') {
+                        // 如果没有选择对比文件，尝试自动选择当前选中的文件
+                        const selectedFileItem = document.querySelector('.file-item.selected');
+                        if (selectedFileItem) {
+                            const fileName = selectedFileItem.querySelector('span').textContent;
+                            // 设置对比状态
+                            selectedFileItem.classList.add('comparing');
+                            document.getElementById('compareFileName').textContent = fileName;
+                            
+                            // 获取当前选中的模型
+                            const selectedModel = this.value;
+                            
+                            // 加载对比数据
+                            loadCompareData('same', { name: fileName }, selectedModel);
+                        } else {
+                            alert('请先选择要对比的文件');
+                        }
+                        return;
+                    }
+                    
+                    // 获取当前选中的模型
+                    const selectedModel = this.value;
+                    
+                    // 找到对应的文件项
+                    const fileItems = document.querySelectorAll('.file-item');
+                    for (let i = 0; i < fileItems.length; i++) {
+                        const fileItem = fileItems[i];
+                        const fileName = fileItem.querySelector('span').textContent;
+                        if (fileName === currentFileName.replace('（对比中）', '')) {
+                            // 加载对比数据
+                            loadCompareData('same', { name: fileName }, selectedModel);
+                            break;
+                        }
+                    }
+                });
+            });
+
+            // 加载对比数据函数
+            function loadCompareData(mode, file, modelName = null) {
+                // 检查分割结果是否存在
+                if (!segmentationResults[file.name] || Object.keys(segmentationResults[file.name]).length === 0) {
+                    alert('请先对选中的文件进行分割');
+                    return;
+                }
+                
+                // 获取所有参数组的分割结果
+                const allResults = Object.entries(segmentationResults[file.name])
+                    .map(([paramsKey, result]) => result);
+                
+                // 获取当前选择的模型名称（优先使用传入的modelName）
+                const selectedModel = modelName || document.querySelector('input[name="modelCompare"]:checked').value;
+                
+                // 过滤出当前选择模型的结果
+                const modelResults = allResults.filter(result => {
+                    return result.params.model === selectedModel;
+                });
+                
+                // 同模型参数对比
+                if (mode === 'same') {
+                    // 获取参数组A、B、C的结果
+                    const resultA = modelResults[0] || null;
+                    const resultB = modelResults[1] || null;
+                    const resultC = modelResults[2] || null;
+                    
+                    // 更新参数组A
+                    updateParameterGroup(1, resultA);
+                    
+                    // 更新参数组B
+                    updateParameterGroup(2, resultB);
+                    
+                    // 更新参数组C
+                    updateParameterGroup(3, resultC);
+                    
+                    // 如果没有结果，尝试加载默认结果
+                    if (!resultA && !resultB && !resultC) {
+                        // 尝试加载该模型的第一个可用结果
+                        const firstAvailableResult = allResults.find(result => result.params.model === selectedModel);
+                        if (firstAvailableResult) {
+                            updateParameterGroup(1, firstAvailableResult);
+                        } else {
+                            alert(`没有找到${selectedModel}的分割结果，请先使用该模型进行分割`);
+                        }
+                    }
+                } else {
+                    // 跨模型对比
+                    // 获取U-Net(2D)的第一个结果
+                    const unetResults = allResults.filter(result => result.params.model === 'U-Net (2D)');
+                    const unetResult = unetResults.length > 0 ? unetResults[0] : null;
+                    
+                    // 获取SAM(2D)的第一个结果
+                    const samResults = allResults.filter(result => result.params.model === 'SAM(2D)');
+                    const samResult = samResults.length > 0 ? samResults[0] : null;
+                    
+                    // 获取Attention-UNet(2D)的第一个结果
+                    const attentionUnetResults = allResults.filter(result => result.params.model === 'Attention-UNet(2D)');
+                    const attentionUnetResult = attentionUnetResults.length > 0 ? attentionUnetResults[0] : null;
+                    
+                    // 更新U-Net(2D)显示
+                    const unetImageContainer = document.getElementById('unetImage');
+                    const unetMetrics = document.querySelector('.model-compare-item[data-model="U-Net (2D)"]');
+
+                    if (unetResult) {
+                        unetImageContainer.innerHTML = '';
+                        const img = document.createElement('img');
+                        img.src = `data:image/png;base64,${unetResult.images.overlay}`;
+                        img.classList.add('w-full', 'h-full', 'object-contain');
+                        unetImageContainer.appendChild(img);
+
+                        // 更新指标
+                        if (unetMetrics) {
+                            const areaElem = unetMetrics.querySelector('.tumor-area');
+                            const perimeterElem = unetMetrics.querySelector('.tumor-perimeter');
+                            const timeElem = unetMetrics.querySelector('.time-elapsed');
+
+                            if (areaElem) areaElem.textContent = unetResult.tumor_metrics?.area ?? 'N/A';
+                            if (perimeterElem) perimeterElem.textContent = (unetResult.tumor_metrics?.perimeter ?? 0).toFixed(3);
+                            if (timeElem) timeElem.textContent = unetResult.time_elapsed ?? 'N/A';
+                        }
+                    } else {
+                        unetImageContainer.innerHTML = `
+                            <div class="text-center text-gray-400">
+                                <i class="fa fa-image text-4xl mb-2"></i>
+                                <p class="text-sm">暂无分割结果</p>
+                            </div>
+                        `;
+                    }
+                    
+                    // 更新SAM(2D)显示
+                    const samImageContainer = document.getElementById('samImage');
+                    const samMetrics = document.querySelector('.model-compare-item[data-model="SAM(2D)"]');
+
+                    if (samResult) {
+                        samImageContainer.innerHTML = '';
+                        const img = document.createElement('img');
+                        img.src = `data:image/png;base64,${samResult.images.overlay}`;
+                        img.classList.add('w-full', 'h-full', 'object-contain');
+                        samImageContainer.appendChild(img);
+
+                        // 更新指标：只有耗时
+                        if (samMetrics) {
+                            const timeElem = samMetrics.querySelector('.time-elapsed');
+                            if (timeElem) timeElem.textContent = samResult.time_elapsed ?? 'N/A';
+                        }
+                    } else {
+                        samImageContainer.innerHTML = `
+                            <div class="text-center text-gray-400">
+                                <i class="fa fa-image text-4xl mb-2"></i>
+                                <p class="text-sm">暂无分割结果</p>
+                            </div>
+                        `;
+                    }
+                    
+                    // 更新Attention-UNet(2D)显示
+                    const attentionUnetImageContainer = document.getElementById('attentionUnetImage');
+                    const attentionUnetMetrics = document.querySelector('.model-compare-item[data-model="Attention-UNet(2D)"]');
+
+                    if (attentionUnetResult) {
+                        attentionUnetImageContainer.innerHTML = '';
+                        const img = document.createElement('img');
+                        img.src = `data:image/png;base64,${attentionUnetResult.images.overlay}`;
+                        img.classList.add('w-full', 'h-full', 'object-contain');
+                        attentionUnetImageContainer.appendChild(img);
+
+                        // 更新指标
+                        if (attentionUnetMetrics) {
+                            const areaElem = attentionUnetMetrics.querySelector('.tumor-area');
+                            const perimeterElem = attentionUnetMetrics.querySelector('.tumor-perimeter');
+                            const timeElem = attentionUnetMetrics.querySelector('.time-elapsed');
+
+                            if (areaElem) areaElem.textContent = attentionUnetResult.tumor_metrics?.area ?? 'N/A';
+                            if (perimeterElem) perimeterElem.textContent = (attentionUnetResult.tumor_metrics?.perimeter ?? 0).toFixed(3);
+                            if (timeElem) timeElem.textContent = attentionUnetResult.time_elapsed ?? 'N/A';
+                        }
+                    } else {
+                        attentionUnetImageContainer.innerHTML = `
+                            <div class="text-center text-gray-400">
+                                <i class="fa fa-image text-4xl mb-2"></i>
+                                <p class="text-sm">暂无分割结果</p>
+                            </div>
+                        `;
+                    }
+                }
+            }
+
+            // 辅助函数：更新参数组显示
+            function updateParameterGroup(groupIndex, result) {
+            const container = document.querySelector(`#sameModelCompare .group:nth-child(${groupIndex}) .image-container`);
+            
+            if (result) {
+                container.innerHTML = '';
+                
+                const img = document.createElement('img');
+                img.src = `data:image/png;base64,${result.images.overlay}`;
+                img.classList.add('w-full', 'h-full', 'object-cover');
+                container.appendChild(img);
+                
+                const paramLabel = document.createElement('div');
+                paramLabel.className = 'absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-medium';
+                paramLabel.textContent = `参数组${String.fromCharCode(64 + groupIndex)} (BS:${result.params.batchSize}, E:${result.params.epochs})`;
+                container.appendChild(paramLabel);
+                
+                const metricContainer = document.querySelectorAll('#sameModelCompare .group')[groupIndex - 1];
+                
+                // 安全更新指标
+                if (result.tumor_metrics) {
+                    if (metricContainer.querySelector('.tumor-area')) {
+                        metricContainer.querySelector('.tumor-area').textContent = result.tumor_metrics.area || 'N/A';
+                    }
+                    if (metricContainer.querySelector('.tumor-perimeter')) {
+                        metricContainer.querySelector('.tumor-perimeter').textContent = 
+                            result.tumor_metrics.perimeter ? result.tumor_metrics.perimeter.toFixed(3) : 'N/A';
+                    }
+                }
+                
+                if (metricContainer.querySelector('.time-elapsed')) {
+                    metricContainer.querySelector('.time-elapsed').textContent = result.time_elapsed || 'N/A';
+                }
+            } else {
+                container.innerHTML = `
+                    <div class="w-full h-full flex items-center justify-center bg-gray-100">
+                        <div class="text-center text-gray-400">
+                            <i class="fa fa-image text-4xl mb-2"></i>
+                            <p class="text-sm">暂无分割结果</p>
+                        </div>
+                    </div>
+                    <div class="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-medium">
+                        参数组${String.fromCharCode(64 + groupIndex)} (无结果)
+                    </div>
+                `;
+                
+                const metricContainer = document.querySelectorAll('#sameModelCompare .group')[groupIndex - 1];
+                metricContainer.querySelector('.tumor-area').textContent = '0';
+                metricContainer.querySelector('.tumor-perimeter').textContent = '0';
+                metricContainer.querySelector('.time-elapsed').textContent = '0s';
+            }
+        }
+            
+            // 运行分割按钮点击事件
+            runSegmentation.addEventListener('click', async function() {
+                // 检查是否有选中的数据
+                if (!selectedFile && !currentSeries) {
+                    alert('请先在"已加载数据"区域选择要分割的文件或序列');
+                    return;
+                }
+
+                // 获取当前模型参数
+                const selectedModel = document.getElementById('modelSelect').value;
+                const currentParams = {
+                    model: selectedModel,
+                    batchSize: document.getElementById('batchSizeSlider').value,
+                    epochs: document.getElementById('epochsSlider').value,
+                    learningRate: document.getElementById('lrSlider').value,
+                    timestamp: new Date().toISOString()
+                };
+                const paramsKey = JSON.stringify(currentParams);
+
+                // 获取关键DOM元素
+                const resultContainer = document.getElementById('resultContainer');
+                const liverMask = document.getElementById('liverMask');
+                const tumorMask = document.getElementById('tumorMask');
+                const noResultMessage = document.getElementById('noResultMessage');
+                const resultImageContainer = document.getElementById('resultImageContainer');
+                const segmentationStatus = document.getElementById('segmentationStatus');
+                const segmentationControls = document.getElementById('segmentationControls');
+
+                // 重置UI状态
+                segmentationStatus.innerHTML = '<i class="fa fa-spinner fa-spin mr-1"></i> 分割中...';
+                segmentationStatus.className = 'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800';
+                segmentationStatus.style.display = 'inline-flex';
+                noResultMessage.style.display = 'none';
+                segmentationControls.style.display = 'none';
+                liverMask.style.display = 'none';
+                tumorMask.style.display = 'none';
+                resultImageContainer.innerHTML = '';
+
+                try {
+                    let result;
+                    let endpoint;
+                    console.log(selectedModel);
+                    // 根据选择的模型决定端点
+                    if (selectedModel === 'SAM(2D)') {
+                        endpoint = 'http://localhost:5001/segment'; // SAM服务端口
+                    } else if (selectedModel === 'Attention-UNet(2D)') {
+                        endpoint = 'http://localhost:5002/segment'; // Attention-UNet服务端口
+                    } else {
+                        endpoint = 'http://localhost:5000/segment'; // U-Net服务端口
+                    }
+
+                    if (currentMode === '2D' && selectedFile) {
+                        if (!isImageFile(selectedFile)) {
+                            throw new Error('不支持的文件类型，请上传图片文件');
+                        }
+
+                        const formData = new FormData();
+                        formData.append('file', selectedFile);
+
+                        const response = await fetch(endpoint, {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (!response.ok) {
+                            const errorData = await response.json().catch(() => null);
+                            throw new Error(errorData?.error || `HTTP错误! 状态码: ${response.status}`);
+                        }
+
+                        result = await response.json();
+                        
+                        console.log(`分割耗时: ${result.time_elapsed || result.metrics.time_elapsed}`);
+                        
+                        if (result.status !== 'success') {
+                            throw new Error(result.message || '分割失败');
+                        }
+
+                        console.log('服务器返回结果:', result);
+
+                        // 存储分割结果，按参数分组
+                        if (!segmentationResults[selectedFile.name]) {
+                            segmentationResults[selectedFile.name] = {};
+                        }
+                        
+                        // 处理不同模型的返回格式
+                        let storedResult;
+                        if (selectedModel === 'SAM(2D)') {
+                            storedResult = {
+                            params: currentParams,
+                            images: {
+                                original: result.images.original,
+                                overlay: result.images.overlay,
+                                mask: result.images.mask
+                            },
+                            time_elapsed: result.metrics.time_elapsed, // 确保使用正确的属性路径
+                            tumor_metrics: {  // 添加空指标以避免错误
+                                area: 0,
+                                perimeter: 0
+                            }
+                        };
+                        } else {
+                            // U-Net的返回格式
+                            storedResult = {
+                                params: currentParams,
+                                images: {
+                                    original: result.images.original,
+                                    overlay: result.images.overlay,    // 预叠加的图像用于对比区域
+                                    liver_mask: result.images.liver_mask,
+                                    tumor_mask: result.images.tumor_mask
+                                },
+                                tumor_metrics: {
+                                    area: result.tumor_metrics.area,
+                                    perimeter: result.tumor_metrics.perimeter
+                                },
+                                time_elapsed: result.time_elapsed
+                            };
+                        }
+                        
+                        segmentationResults[selectedFile.name][paramsKey] = storedResult;
+
+                        // ================= 分割结果区域显示 =================
+                        // 显示原始图像
+                        const originalImg = document.createElement('img');
+                        originalImg.src = `data:image/png;base64,${result.images.original}`;
+                        originalImg.classList.add('w-full', 'h-full', 'object-contain');
+                        resultImageContainer.appendChild(originalImg);
+
+                        // 设置遮罩 - 根据模型类型处理
+                        if (selectedModel === 'SAM(2D)') {
+                            // 清空 resultImageContainer，只添加原图
+                            resultImageContainer.innerHTML = '';
+
+                            // 原始图像
+                            const originalImg = document.createElement('img');
+                            originalImg.src = `data:image/png;base64,${result.images.original}`;
+                            originalImg.classList.add('w-full', 'h-full', 'object-contain');
+                            resultImageContainer.appendChild(originalImg);
+
+                            // 获取肝脏、肿瘤遮罩层
+                            const liverMaskDiv = document.getElementById('liverMask');
+                            const tumorMaskDiv = document.getElementById('tumorMask');
+
+                            // 设置 liverMask 为遮罩图片，显示
+                            liverMaskDiv.style.backgroundImage = `url(data:image/png;base64,${result.images.mask})`;
+                            liverMaskDiv.style.backgroundRepeat = 'no-repeat';
+                            liverMaskDiv.style.backgroundSize = 'contain';
+                            liverMaskDiv.style.backgroundPosition = 'center';
+                            liverMaskDiv.style.display = 'block';
+                            liverMaskDiv.style.opacity = opacitySlider.value / 100;
+
+                            // 隐藏 tumorMask
+                            tumorMaskDiv.style.display = 'none';
+
+                            // 勾选肝脏，取消肿瘤
+                            document.getElementById('showLiver').checked = true;
+                            document.getElementById('showTumor').checked = false;
+                        } else {
+                            // U-Net模型 - 显示肝脏和肿瘤两个遮罩
+                            liverMask.style.backgroundImage = `url(data:image/png;base64,${result.images.liver_mask})`;
+                            tumorMask.style.backgroundImage = `url(data:image/png;base64,${result.images.tumor_mask})`;
+                            liverMask.style.display = 'block';
+                            tumorMask.style.display = 'block';
+                            
+                            // 恢复默认UI
+                            document.querySelector('label[for="showLiver"] div').style.backgroundColor = '#36CFC9'; // 肝脏颜色
+                            document.querySelector('label[for="showTumor"] div').style.backgroundColor = '#FF4D4F'; // 肿瘤颜色
+                            document.querySelector('label[for="showTumor"]').style.display = 'flex';
+                        }
+                        
+                        // 存储遮罩数据以便后续控制
+                        liverMask.dataset.mask = selectedModel === 'SAM(2D)' ? result.images.mask : result.images.liver_mask;
+                        tumorMask.dataset.mask = result.images.tumor_mask;
+
+                        // 显示控制组件
+                        segmentationControls.style.display = 'block';
+                        
+                        // 更新状态
+                        const elapsedTime = selectedModel === 'SAM(2D)' ? result.metrics.time_elapsed : result.time_elapsed;
+                        segmentationStatus.innerHTML = `<i class="fa fa-check-circle mr-1"></i> 完成 (${elapsedTime})`;
+                        segmentationStatus.className = 'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800';
+
+                        // 如果有对比项选中，自动更新对比数据
+                        const comparingFile = document.querySelector('.file-item.comparing');
+                        if (comparingFile) {
+                            const compareMode = document.getElementById('compareMode').value;
+                            loadCompareData(compareMode, { name: selectedFile.name });
+                        }
+
+                    } else if (currentMode === '2.5D' && currentSeries) {
+                        throw new Error('2.5D模式暂未实现，请使用2D模式');
+                    }
+
+                } catch (error) {
+                    console.error('分割失败:', error);
+                    
+                    // 恢复原始图像显示
+                    if (selectedFile) {
+                        displayOriginalImage(selectedFile);
+                    } else if (currentSeries) {
+                        displaySeries(currentSeries);
+                    }
+                    
+                    // 显示错误状态
+                    segmentationStatus.innerHTML = '<i class="fa fa-times-circle mr-1"></i> 失败';
+                    segmentationStatus.className = 'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800';
+                    
+                    // 显示详细错误信息
+                    const errorMessage = error.message.includes('Failed to fetch') 
+                        ? '无法连接到分割服务，请确保服务已启动' 
+                        : error.message;
+                    
+                    // 重置分割控制区域
+                    document.querySelector('label[for="showLiver"] span').textContent = "肝脏";
+                    document.querySelector('label[for="showTumor"]').style.display = 'flex';
+                }
+            });
+
+            // 处理对比模式切换
+            const compareMode = document.getElementById('compareMode');
+            const sameModelCompare = document.getElementById('sameModelCompare');
+            const crossModelCompare = document.getElementById('crossModelCompare');
+
+            compareMode.addEventListener('change', function() {
+                const selectedMode = this.value;
+                if (selectedMode === 'same') {
+                    sameModelCompare.style.display = 'block';
+                    crossModelCompare.style.display = 'none';
+                } else {
+                    sameModelCompare.style.display = 'none';
+                    crossModelCompare.style.display = 'block';
+                }
+                
+                // 如果已经选择了对比文件，重新加载数据
+                const currentFileName = document.getElementById('compareFileName').textContent;
+                if (currentFileName !== '未选择') {
+                    // 找到对应的文件项
+                    const fileItems = document.querySelectorAll('.file-item');
+                    for (let i = 0; i < fileItems.length; i++) {
+                        const fileItem = fileItems[i];
+                        const fileName = fileItem.querySelector('span').textContent;
+                        if (fileName === currentFileName.replace('（对比中）', '')) {
+                            // 模拟文件对象
+                            const file = { name: fileName };
+                            loadCompareData(selectedMode, file);
+                            break;
+                        }
+                    }
+                }
+            });
+
+            // 在跨模型对比的checkbox事件监听器中添加自适应布局逻辑
+            document.querySelectorAll('#crossModelCompare input[type="checkbox"]').forEach(checkbox => {
+                checkbox.addEventListener('change', function() {
+                    const selectedModels = Array.from(document.querySelectorAll('#crossModelCompare input[type="checkbox"]:checked'))
+                                            .map(cb => cb.value);
+                    
+                    // 至少需要选择两个模型才能比较
+                    if (selectedModels.length < 2) {
+                        alert('请至少选择两个模型进行比较');
+                        this.checked = true; // 保持至少两个选中
+                        return;
+                    }
+                    
+                    // 隐藏所有模型区域
+                    document.querySelectorAll('#modelCompareContainer .model-compare-item').forEach(item => {
+                        item.style.display = 'none';
+                    });
+                    
+                    // 显示选中的模型区域
+                    selectedModels.forEach(model => {
+                        const item = document.querySelector(`.model-compare-item[data-model="${model}"]`);
+                        if (item) item.style.display = 'block';
+                    });
+                    
+                    // 根据选择的模型数量调整布局
+                    const container = document.getElementById('modelCompareContainer');
+                    switch(selectedModels.length) {
+                        case 2:
+                            container.className = 'grid grid-cols-1 md:grid-cols-2 gap-4';
+                            break;
+                        case 3:
+                            container.className = 'grid grid-cols-1 md:grid-cols-3 gap-4';
+                            break;
+                        case 4:
+                            container.className = 'grid grid-cols-1 md:grid-cols-4 gap-4';
+                            break;
+                        case 5:
+                            container.className = 'grid grid-cols-1 md:grid-cols-5 gap-4';
+                            break;
+                        default:
+                            container.className = 'grid grid-cols-1 md:grid-cols-2 gap-4';
+                    }
+                    
+                    // 更新模型标题
+                    selectedModels.forEach(model => {
+                        const titleElement = document.querySelector(`.model-compare-item[data-model="${model}"] .absolute.top-2.right-2`);
+                        if (titleElement) {
+                            titleElement.textContent = model;
+                        }
+                    });
+                });
+            });
+
+            // 初始化时确保至少两个模型被选中
+            document.getElementById('crossModel1').checked = true;
+            document.getElementById('crossModel2').checked = true;
+        });
+    </script>
+</body>
+</html>
